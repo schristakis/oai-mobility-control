@@ -1,83 +1,143 @@
-# 5G-AMF-Scaling
+# Overview
+This project focuses on running experiments in OpenAirInterface to simulate user movement by varying path loss parameters in the integrated channel models.
 
-## Contact
 
-For help and information for this project refer to this email : Sokratis.Christakis@lip6.fr 
+# Getting Started
+## Clone the official repository 
 
-## Overview
 
-In this project you are asked to deploy a fully-operational 5G network using OpenAirInterface(OAI) and Kubernetes. Using Kubernetes means that your different network functions will run as independent containers(Docker) within a microservices environment provided by Kubernetes. The goal of this project is to observe the deployed User Equipments (UEs) that are entering the network. Based on that number, you are asked to scale the number of AMF instances that deal with these new UE subscriptions.
+```git clone https://gitlab.eurecom.fr/oai/openairinterface5g.git```
 
-## Getting Started
-
-The first step is to deploy the 5G Core Network.
-
-Clone this repository in your VM to access the files that we have already prepared for you:
+## Checkout on a recent tag that we verified everything works as expected 
 ```
-git clone https://gitlab.com/schristakis1/5g-amf-scaling.git
+cd openairinterface5g 
+git checkout ba2d7aad18788c2572cb0b96488dc96ef4089c83
 ```
 
-
-Go inside the the folder that you have just cloned and study the files and more specifically the folder oai-5g-core and oai-ueransim.yaml.
-
-- In this project you will have to deploy the 5G Core funtions **in this specific order** : mysql(Database), NRF, UDR, UDM, AUSF, AMF, SMF, UPF.
-
-
+## Build the correct version of DPDK 
 ```
-cd 5g-amf-scaling/oai-5g-core
-```
-In orde to deploy each function you have to execute the following command for each core network function:
-
-```
-helm install {network_function_name} {path_of_network_function}
-```
-For example if you want to deploy the sql database  and then the NRF, UDR you execute:
-
-```
-helm install mysql mysql/
-helm install nrf oai-nrf/
-helm install udr oai-udr/
-...
-```
-It is very important that every after helm command you execute: kubectl get pods in order to see that the respective network function is running, before going to the next one.
-
-Afer you deployed all the network functions mentioned above you will be able to connect the UE to the 5G network by executing:
-
-```
-kubectl apply -f oai-ueransim.yaml
+curl -O https://fast.dpdk.org/rel/dpdk-20.11.9.tar.xz
+tar -xf dpdk-20.11.9.tar.xz
+cd dpdk-stable-20.11.9/
+sudo apt-get install python3 python3-pip python3-setuptools python3-wheel ninja-build libnuma-dev
+pip3 install meson pyelftools
+meson setup build
+cd build
+ninja
+sudo pip3 install meson
+meson install
 ```
 
-In order to see if the UE has actually subscribed and received an ip you will have to enter the UE container:
-
+## Install RAN and UE alongside RFsimulator and Telnet server
 ```
-kubectl get pods # In order to find the name of the ue_container_name (should look something like this: ueransim-746f446df9-t4sgh)
-kubectl exec -ti {ue_container_name} -- bash
-```
-
-If everything went well you should be inside the UE container and if you execute ifconfig you should see the following interface:
-```
-uesimtun0: flags=369<UP,POINTOPOINT,NOTRAILERS,RUNNING,PROMISC>  mtu 1400
-        inet 12.1.1.2  netmask 255.255.255.255  destination 12.1.1.2
-        inet6 fe80::73e2:e6e6:c3a:3d17  prefixlen 64  scopeid 0x20<link>
-        unspec 00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00  txqueuelen 500  (UNSPEC)
-        RX packets 0  bytes 0 (0.0 B)
-        RX errors 0  dropped 0  overruns 0  frame 0
-        TX packets 12  bytes 688 (688.0 B)
-        TX errors 0  dropped 0 overruns 0  carrier 0  collisions 0
+cd openairinterface5g/cmake_targets/
+sudo ./build_oai -I --phy_simulators -w SIMU --nrUE --gNB --build-lib telnetsrv
 ```
 
-If not, something went wrong. If yes, execute the following command to make sure you have connectivity to the internet through your 5G network:
+## Install the CN
+
+### Install Docker and Docker Compose
 ```
-ping -I uesimtun0 8.8.8.8
+sudo apt-get update
+sudo apt-get install ca-certificates curl
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
+  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+sudo apt-get update
+sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo groupadd docker
+sudo usermod -aG docker $USER
+sudo reboot
+```
+
+### Pull the images from Dockerhub
+
+```
+docker login
+docker pull mysql:8.0
+docker pull oaisoftwarealliance/oai-amf:v2.0.0
+docker pull oaisoftwarealliance/oai-smf:v2.0.0
+docker pull oaisoftwarealliance/oai-upf:v2.0.0
+docker pull oaisoftwarealliance/trf-gen-cn5g:focal
 ```
 
 
-If the ping command works, it means that you have successfully deployed a 5G network and connected a UE to it.
+# Deploy 5G CN, RAN and a UE
+
+## Deploy CN
+```
+cd openairinterface5g/ci-scripts/yaml_files/5g_rfsimulator
+docker compose up -d mysql oai-amf oai-smf oai-upf oai-ext-dn
+```
+
+## Deploy without a channel model
+
+### Deploy the gNB 
+```
+cd openairinterface5g/cmake_targets/ran_build/build
+sudo ./nr-softmodem -O <path-to-gnb.conf> -E --sa --gNBs.[0].min_rxtxtime 6 --rfsim
+```
+
+Note: Replace the ```<path-to-gnb.conf>``` with the path of gnb.conf (file we provide).
 
 
-## Project goal
+### Deploy the UE
+```
+cd openairinterface5g/cmake_targets/ran_build/build
+sudo ./nr-uesoftmodem --band 78 -E --sa --rfsim -r 106 --numerology 1 --ssb 516 -C 3319680000 --uicc0.imsi 208990100001101
+```
 
-As previously mentioned you will have to extend this architecture to connect multiple UEs in the network(hint: oai-ueransim.yaml file) and by doing so, you should be able to see multiple uesimtun* interfaces and not only one like in the example before. Then you will have to change the number of UEs for the values that are in the number_of_ues.txt file. Originally  your network will have only one AMF function, but if the number of UEs is high you will have to scale the AMF deployment to deal with the extra UEs.
+### Verify end-to-end connectivity
+```
+ping -I oaitun_ue1 192.168.72.135
+```
 
-Hint: The files you will have to modify are the oai-ueransim.yaml (increase/decrease number of UEs) and manually scale the AMF intances.
-It is on you whether to create a script to monitor the number of UEs and scale the AMF instances accordingly.
+
+## Deploy with a channel model
+
+### Deploy the gNB (Downling Channel Model)
+```
+cd openairinterface5g/cmake_targets/ran_build/build
+sudo ./nr-softmodem -O <path-to-gnb.conf> -E --sa --gNBs.[0].min_rxtxtime 6 --rfsim --rfsimulator.options chanmod --telnetsrv
+```
+
+Note: Replace the ```<path-to-gnb.conf>``` with the path of gnb.conf (file we provide).
+
+
+### Deploy the UE (Uplink Channel Model)
+```
+cd openairinterface5g/cmake_targets/ran_build/build
+sudo ./nr-uesoftmodem --band 78 -E --sa --rfsim -r 106 --numerology 1 --ssb 516 -C 3319680000 --uicc0.imsi 208990100001101 --rfsimulator.options chanmod -O <path-to-nrue.uicc.conf> --telnetsrv
+```
+
+Note: Replace the ```<path-to-nrue.uicc.conf>``` with the path of nrue.uicc.conf (file we provide).
+
+Note: The ```--telnetsrv``` should be executed either on the UE or the gNB and NOT on both.
+
+### Verify end-to-end connectivity
+```
+ping -I oaitun_ue1 192.168.72.135
+```
+
+## Modyfying the Channel Model 
+Note: Read [this](https://gitlab.eurecom.fr/oai/openairinterface5g/-/blob/develop/openair1/SIMULATION/TOOLS/DOC/channel_simulation.md) for more details
+### Connect to the Telnet server 
+```telnet 127.0.0.1 9090```
+
+### Modify some of the parameters
+```
+channelmod modify 0 ploss 12
+channelmod modify 0 noise_power_dB 3
+```
+
+
+# Project goal
+1. Modify the pathloss paremeter for values ranging from 10 to 25 on the gNB (hint: telnet on the nr-softmodem) and describe what you observe  
+1. Modify the pathloss paremeter for values ranging from 10 to 25 on the UE (hint: telnet on the nr-uesoftmodem) and describe what you observe  
+
