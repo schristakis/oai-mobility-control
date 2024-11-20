@@ -1,7 +1,7 @@
 # Simulating Mobility Patterns in OAI through Channel Modifications via Telnet
 
 # Contact
-For help and information for this project refer to this email : alexstolt@gmail.com
+For help and information for this project refer to this email : alexstolt0131@gmail.com
 
 # Overview
 This project focuses on running experiments in OpenAirInterface to simulate user movement by varying path loss parameters in the integrated channel models.
