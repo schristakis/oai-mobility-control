@@ -2,7 +2,8 @@
 
 # Contact
 For help and information for this project refer to this email : alexstolt0131@gmail.com
-Alexandors Stoltidis
+
+Alexandros Stoltidis
 
 # Overview
 This project focuses on running experiments in OpenAirInterface to simulate user movement by varying path loss parameters in the integrated channel models.
