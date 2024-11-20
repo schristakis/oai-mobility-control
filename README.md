@@ -1,4 +1,6 @@
-# cONTACT
+# Simulating Mobility Patterns in OAI through Channel Modifications via Telnet
+
+# Contact
 For help and information for this project refer to this email : alexstolt@gmail.com
 
 # Overview
